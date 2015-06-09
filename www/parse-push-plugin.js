@@ -1,7 +1,5 @@
 var serviceName = 'ParsePushPlugin';
 
-var _ = window._ ? window._ : Parse._;
-
 var ParsePushPlugin = {
 	 _eventKey: null,
 	 _onNotify: function(pn, pushAction){
@@ -26,13 +24,13 @@ var ParsePushPlugin = {
 				 this.trigger(base + ':' + pn[this._eventKey], pn);
 			 }
 		 }
-		 
+
 	 },
-	 
+
     register: function(regParams, successCb, errorCb) {
        var params = _.extend({ecb: serviceName + '._onNotify'}, regParams || {});
    	 this._eventKey = params.eventKey || null;
-   	 
+
        cordova.exec(successCb, errorCb, serviceName, 'register', [params]);
     },
 
