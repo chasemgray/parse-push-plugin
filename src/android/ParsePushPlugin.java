@@ -1,4 +1,4 @@
-package com.phonegap.plugins;
+package com.phonegap.parsepushplugin;
 
 import java.util.List;
 import java.lang.Exception;
@@ -11,8 +11,8 @@ import org.json.JSONObject;
 import org.json.JSONException;
 
 import com.parse.Parse;
-import com.parse.ParseInstallation;
 import com.parse.ParsePush;
+import com.parse.ParseInstallation;
 
 import android.util.Log;
 
@@ -24,8 +24,9 @@ public class ParsePushPlugin extends CordovaPlugin {
     public static final String ACTION_SUBSCRIBE = "subscribe";
     public static final String ACTION_UNSUBSCRIBE = "unsubscribe";
     
-    private static CordovaWebView gWebView;
     private static String gECB;
+    private static CordovaWebView gWebView;
+    private static boolean gForeground = false;
     
     public static final String LOGTAG = "ParsePushPlugin";
 
@@ -62,16 +63,20 @@ public class ParsePushPlugin extends CordovaPlugin {
     private void registerDevice(final CallbackContext callbackContext, final JSONArray args) {
     	try {
         	JSONObject jo = args.getJSONObject(0);
-            String appId = jo.getString("appId");
-            String clientKey = jo.getString("clientKey");
-            
-        	//
-        	// initialize Parse
-            Parse.initialize(cordova.getActivity(), appId, clientKey);
-            ParseInstallation.getCurrentInstallation().saveInBackground();
+        	
+            if(!jo.optString("appId").isEmpty() && !jo.optString("clientKey").isEmpty()){
+            	// To quickly test if application is properly setup for push notification, user can
+            	// initialize Parse via the register() function in this plugin's js api by
+            	// specifying appId and clientKey.
+            	// Note: this is for quickstart testing only because this solution only works
+            	// while the app is running. It will crash when a pn arrives and the app is not running.
+            	// See docs for the real solution involving a MainApplication Java class
+                Parse.initialize(cordova.getActivity(), jo.optString("appId"), jo.optString("clientKey"));
+                ParseInstallation.getCurrentInstallation().saveInBackground();
+            }
             
             //
-            // register callbacks for notification events
+            // register javascript event callbacks for notification events
             gECB = jo.optString("ecb");
             
             callbackContext.success();
@@ -123,22 +128,53 @@ public class ParsePushPlugin extends CordovaPlugin {
     * Use the cordova bridge to call the jsCB and pass it _json as param
     */
     public static void javascriptECB(JSONObject _json){
-    	String snippet = "javascript:" + gECB + "(" + _json.toString() + ")";
-    	Log.v(LOGTAG, "javascriptCB: " + snippet);
+    	javascriptECB(_json, "RECEIVE");
+    }
+    public static void javascriptECB(JSONObject _json, String pushAction){
+    	boolean isOkAction = pushAction == "RECEIVE" || pushAction == "OPEN";
     	
-    	if (gECB != null && !gECB.isEmpty() && gWebView != null) gWebView.sendJavascript(snippet);
+    	if( isJavascriptReady() && isOkAction ){
+    		String snippet = "javascript:" + gECB + "(" + _json.toString() + ",'" + pushAction + "'" + ")";
+    		
+    		//Log.d(LOGTAG, "javascriptECB snippet " + snippet);
+    		gWebView.sendJavascript(snippet);
+    	}
+    }
+    
+    public static boolean isJavascriptReady(){
+    	return gECB != null && !gECB.isEmpty() && gWebView != null;
     }
     
     @Override
     protected void pluginInitialize() {
     	gECB = null;
-    	gWebView = this.webView;
+    	gWebView = this.webView;  
+    	gForeground = true;
     }
     
     @Override
+    public void onPause(boolean multitasking) {
+        super.onPause(multitasking);
+        gForeground = false;
+    }
+
+    @Override
+    public void onResume(boolean multitasking) {
+        super.onResume(multitasking);
+        gForeground = true;
+    }
+    
+    
+    @Override
     public void onDestroy() {
-    	super.onDestroy();
     	gECB = null;
     	gWebView = null;
+    	gForeground = false;
+    	
+    	super.onDestroy();
+    }
+    
+    public static boolean isInForeground(){
+      return gForeground;
     }
 }
